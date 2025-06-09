@@ -1,0 +1,10 @@
+requests
+pandas
+numpy<2.0
+python-dotenv
+google-generativeai
+yfinance
+beautifulsoup4
+scikit-learn
+pandas-ta
+lxml

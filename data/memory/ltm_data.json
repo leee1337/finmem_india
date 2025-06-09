@@ -1,0 +1,25 @@
+[
+    {
+        "id": "ltm_1_20250609075342776415",
+        "category": "significant_event",
+        "summary": "Company X announced a 2:1 stock split, effective next month.",
+        "timestamp_added": "2025-06-09T07:53:42.776441+00:00",
+        "date": "2023-05-15",
+        "stock": "COMPANYX.NS"
+    },
+    {
+        "id": "ltm_2_20250609075342779618",
+        "category": "market_trend",
+        "summary": "Small-cap stocks saw significant rally in Q2 2023 after policy changes.",
+        "timestamp_added": "2025-06-09T07:53:42.779631+00:00",
+        "date": "2023-06-30"
+    },
+    {
+        "id": "ltm_3_20250609075342779653",
+        "category": "earnings_report",
+        "summary": "RELIANCE.NS Q1 2024: Net profit up 15% YoY, beat estimates. Revenue from retail grew 20%.",
+        "timestamp_added": "2025-06-09T07:53:42.779658+00:00",
+        "date": "2023-07-21",
+        "stock": "RELIANCE.NS"
+    }
+]

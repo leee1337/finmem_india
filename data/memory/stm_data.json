@@ -1,0 +1,47 @@
+[
+    {
+        "type": "news",
+        "content": "Market hits all-time high driven by tech stocks.",
+        "timestamp": "2025-06-09T07:53:42.776280+00:00"
+    },
+    {
+        "type": "price_update",
+        "content": "Price increased",
+        "timestamp": "2025-06-09T07:53:42.776313+00:00",
+        "stock": "TCS.NS",
+        "data": {
+            "open": 3800,
+            "high": 3850,
+            "low": 3790,
+            "close": 3845
+        }
+    },
+    {
+        "type": "analyst_rating",
+        "content": "Upgraded to BUY",
+        "timestamp": "2025-06-09T07:53:42.776317+00:00",
+        "stock": "RELIANCE.NS",
+        "data": {
+            "firm": "Global Brokers",
+            "rating": "BUY",
+            "target_price": 3200
+        }
+    },
+    {
+        "type": "news",
+        "content": "RBI keeps repo rate unchanged in latest policy meeting.",
+        "timestamp": "2025-06-09T07:53:42.776321+00:00"
+    },
+    {
+        "type": "trade_decision",
+        "content": "Decision: HOLD, Reasoning: Gemini API key not available. Defaulting to HOLD., Confidence: N/A",
+        "timestamp": "2025-06-09T08:02:43.537888+00:00",
+        "stock": "RELIANCE.NS"
+    },
+    {
+        "type": "trade_decision",
+        "content": "Decision: HOLD, Reasoning: Gemini API key not available. Defaulting to HOLD., Confidence: N/A",
+        "timestamp": "2025-06-09T08:02:43.566266+00:00",
+        "stock": "TCS.NS"
+    }
+]

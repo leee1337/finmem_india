@@ -1,0 +1,57 @@
+{
+    "cash": 38326.25,
+    "holdings": {
+        "RELIANCE.NS": {
+            "quantity": 7,
+            "avg_price": 2850.0
+        },
+        "TCS.NS": {
+            "quantity": 5,
+            "avg_price": 3800.5
+        },
+        "INFY.NS": {
+            "quantity": 15,
+            "avg_price": 1520.75
+        }
+    },
+    "transaction_log": [
+        {
+            "timestamp": "2025-06-09T08:00:00.964123+00:00",
+            "stock": "RELIANCE.NS",
+            "action": "BUY",
+            "price": 2850.0,
+            "quantity": 10,
+            "cost": 28500.0,
+            "status": "SUCCESS"
+        },
+        {
+            "timestamp": "2025-06-09T08:00:00.964352+00:00",
+            "stock": "TCS.NS",
+            "action": "BUY",
+            "price": 3800.5,
+            "quantity": 5,
+            "cost": 19002.5,
+            "status": "SUCCESS"
+        },
+        {
+            "timestamp": "2025-06-09T08:00:00.964899+00:00",
+            "stock": "INFY.NS",
+            "action": "BUY",
+            "price": 1520.75,
+            "quantity": 15,
+            "cost": 22811.25,
+            "status": "SUCCESS"
+        },
+        {
+            "timestamp": "2025-06-09T08:00:00.965380+00:00",
+            "stock": "RELIANCE.NS",
+            "action": "SELL",
+            "price": 2880.0,
+            "quantity": 3,
+            "proceeds": 8640.0,
+            "pnl": 90.0,
+            "status": "SUCCESS"
+        }
+    ],
+    "last_saved": "2025-06-09T08:00:00.965416+00:00"
+}
