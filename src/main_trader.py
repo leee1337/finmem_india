@@ -12,6 +12,8 @@ from components import memory_manager
 from components import rag_retriever
 from components import gemini_client
 from components import paper_trading_engine
+from components import trade_event_logger
+from components import data_manager
 
 # Configuration
 # Load the list of Nifty 50 stocks to be processed from the configuration file.
@@ -51,12 +53,29 @@ def main_trading_logic():
     # Store latest prices encountered for final portfolio valuation
     latest_market_prices = {}
 
+    # --- Ensure News Data and RAG are Up-to-Date (Global - Once per run) ---
+    print("\n--- Phase 1.5: Ensuring News Data and RAG readiness ---")
+    # Define desired news recency in hours, e.g., 12 or 24 hours
+    # This value could also come from a global config file later.
+    data_manager.ensure_news_data_available(news_recency_hours=12)
+    print("--- News Data and RAG readiness check complete ---")
+
     # 2. Main Loop per Stock
     print("\n--- Phase 2: Processing Stocks ---")
     for stock_symbol in STOCKS_TO_PROCESS:
         print(f"\n===== Processing {stock_symbol} =====")
 
-        # a. Load Stock Data and Indicators
+        # --- Ensure Stock-Specific Data is Available and Up-to-Date ---
+        # Define desired data/indicator recency in days.
+        # These values could also come from a global config file.
+        data_manager.ensure_stock_data_available(
+            stock_symbol,
+            data_recency_days=1,  # How old raw data can be
+            indicator_recency_days=1 # How old indicator files can be
+        )
+        # Now, the data file at data_file_path should exist and be recent.
+
+        # a. Load Stock Data and Indicators (This section remains, but now it's more certain files exist)
         print(f"\n  --- a. Loading data for {stock_symbol} ---")
         data_file_path = os.path.join(STOCK_DATA_WITH_INDICATORS_PATH, f"{stock_symbol}_data_with_indicators.csv")
         if not os.path.exists(data_file_path):
@@ -103,10 +122,10 @@ def main_trading_logic():
 
         # b. Gather Intelligence
         print(f"\n  --- b. Gathering intelligence for {stock_symbol} ---")
-        # news_scraper.scrape_all_sources() # This generates dummy news if blocked
+        # news_scraper.scrape_all_sources() # This was commented out, news is now handled by data_manager globally.
         # print("    News scraping attempted/completed (might be dummy data).")
 
-        rag_retriever.build_or_update_vector_store(force_reload=True) # Reload to ensure it picks up any newly "scraped" news
+        # rag_retriever.build_or_update_vector_store(force_reload=True) # REMOVED: This is now handled by data_manager.ensure_news_data_available() before the loop.
         # print("    RAG vector store built/updated.")
 
         news_query = f"What is the latest news for {stock_symbol}? Also general market sentiment or news for Nifty 50 index."
@@ -131,6 +150,7 @@ def main_trading_logic():
 
         # c. Get Trading Decision
         print(f"\n  --- c. Getting trading decision for {stock_symbol} ---")
+        raw_response = "Gemini API not called or key unavailable" # Initialize raw_response
         current_holdings_dict = paper_trading_engine.get_holdings()
         portfolio_cash = paper_trading_engine.get_cash()
         portfolio_status_dict = {
@@ -162,38 +182,72 @@ def main_trading_logic():
         print(f"    Decision for {stock_symbol}: {parsed_decision.get('decision')} (Confidence: {parsed_decision.get('confidence')})")
         print(f"    Reasoning: {parsed_decision.get('reasoning')}")
 
-        # d. Execute Trade
-        print(f"\n  --- d. Executing trade for {stock_symbol} ---")
-        trade_executed_info = None
-        # --- Determine Trade Quantity Dynamically ---
-        # The trade_quantity is determined based on Gemini's recommendation:
-        # 1. Specific number of shares (position_size).
-        # 2. Percentage of available cash (position_size_percent).
-        # If neither is provided or valid, quantity defaults to 0.
+        # --- Determine Trade Quantity (Moved before decision logging) ---
+        # This section calculates trade_quantity based on parsed_decision
         trade_quantity = 0
         if parsed_decision.get('decision') in ["BUY", "SELL"]:
-            position_size = parsed_decision.get('position_size') # int number of shares
-            position_size_percent = parsed_decision.get('position_size_percent') # float percentage
-            # current_price is already available
-            # portfolio_cash is already available (fetched before Gemini call)
-
+            position_size = parsed_decision.get('position_size')
+            position_size_percent = parsed_decision.get('position_size_percent')
             if position_size is not None and position_size > 0:
                 trade_quantity = position_size
-                print(f"    Using specific share quantity from Gemini: {trade_quantity}")
+                # print(f"    Using specific share quantity from Gemini: {trade_quantity}") # Will be logged in event
             elif position_size_percent is not None and position_size_percent > 0:
-                if current_price > 0: # Avoid division by zero if price is somehow zero
+                if current_price > 0:
                     cash_to_allocate = portfolio_cash * (position_size_percent / 100.0)
                     calculated_quantity = int(cash_to_allocate / current_price)
                     trade_quantity = calculated_quantity
-                    print(f"    Using percentage of cash from Gemini: {position_size_percent}%")
-                    print(f"    Cash available: {portfolio_cash:.2f}, Current price: {current_price:.2f}")
-                    print(f"    Allocating {cash_to_allocate:.2f} for trade, calculated quantity: {trade_quantity}")
-                else:
-                    print(f"    Warning: Current price is {current_price}. Cannot calculate quantity from percentage. Defaulting quantity to 0.")
-                    trade_quantity = 0
-            else:
-                print(f"    Warning: Position size not specified or invalid in Gemini response. Defaulting quantity to 0.")
-                trade_quantity = 0
+                    # print(f"    Using percentage of cash from Gemini: {position_size_percent}%") # Will be logged
+                    # print(f"    Allocating {cash_to_allocate:.2f} for trade, calculated quantity: {trade_quantity}") # Will be logged
+                # else: # Warning for current_price <= 0 is already printed below if trade_quantity ends up 0
+                    # print(f"    Warning: Current price is {current_price}. Cannot calculate quantity from percentage.")
+            # else: # Warning for no valid size is already printed below if trade_quantity ends up 0
+                # print(f"    Warning: Position size not specified or invalid. Defaulting quantity to 0.")
+
+        # --- Log Decision Analysis Event ---
+        decision_event_data = {
+            "event_type": "decision_analysis",
+            "stock_symbol": stock_symbol,
+            "decision_input_current_price": current_price,
+            "decision_input_technical_indicators": technical_indicators_dict,
+            "decision_input_news_context": relevant_news_headlines,
+            "decision_input_stm_extracts": stm_extracts_list,
+            "decision_input_ltm_extracts": ltm_extracts_list,
+            "decision_input_portfolio_cash": portfolio_cash,
+            "decision_input_portfolio_holdings_stock": current_holdings_dict.get(stock_symbol, {'quantity': 0, 'avg_price': 0}),
+            "gemini_raw_response": raw_response,
+            "gemini_decision": parsed_decision.get('decision'),
+            "gemini_reasoning": parsed_decision.get('reasoning'),
+            "gemini_confidence": parsed_decision.get('confidence'),
+            "gemini_position_size_shares": parsed_decision.get('position_size'),
+            "gemini_position_size_percent": parsed_decision.get('position_size_percent'),
+            "calculated_trade_quantity": trade_quantity
+        }
+        trade_event_logger.log_event(decision_event_data)
+
+        # d. Execute Trade
+        print(f"\n  --- d. Executing trade for {stock_symbol} ---")
+        trade_executed_info = None
+        # --- Determine Trade Quantity Dynamically --- # This comment block is now slightly redundant as logic is above
+        # The trade_quantity is determined based on Gemini's recommendation:
+        # 1. Specific number of shares (position_size). # Redundant comment
+        # 2. Percentage of available cash (position_size_percent). # Redundant comment
+        # If neither is provided or valid, quantity defaults to 0. # Redundant comment
+        # trade_quantity calculation is now above the decision_analysis event logging.
+        # The print statements for how quantity was derived were removed as this detail is now in the decision_analysis log.
+
+        # Original print statements for quantity derivation (now part of decision_analysis log or implicit):
+        # if parsed_decision.get('decision') in ["BUY", "SELL"]:
+        #     if position_size is not None and position_size > 0: # position_size is defined above
+        #         print(f"    Using specific share quantity from Gemini: {trade_quantity}")
+        #     elif position_size_percent is not None and position_size_percent > 0: # position_size_percent is defined above
+        #         if current_price > 0:
+        #             print(f"    Using percentage of cash from Gemini: {position_size_percent}%")
+        #             print(f"    Cash available: {portfolio_cash:.2f}, Current price: {current_price:.2f}")
+        #             print(f"    Allocating {cash_to_allocate:.2f} for trade, calculated quantity: {trade_quantity}") # cash_to_allocate defined above
+        #         else:
+        #             print(f"    Warning: Current price is {current_price}. Cannot calculate quantity from percentage. Defaulting quantity to 0.")
+        #     else:
+        #         print(f"    Warning: Position size not specified or invalid in Gemini response. Defaulting quantity to 0.")
 
             if trade_quantity > 0:
                 trade_success = paper_trading_engine.execute_order(
@@ -210,6 +264,24 @@ def main_trading_logic():
                     'price': current_price,
                     'reason_if_failed': paper_trading_engine.transaction_log[-1].get('reason') if not trade_success and paper_trading_engine.transaction_log else None
                 }
+                # --- Log Trade Execution Event ---
+                execution_event_data = {
+                    "event_type": "trade_execution",
+                    "stock_symbol": stock_symbol,
+                    "decision_gemini_decision": parsed_decision.get('decision'),
+                    "decision_calculated_trade_quantity": trade_quantity,
+                    "trade_action": trade_executed_info['action'],
+                    "trade_quantity_attempted": trade_quantity,
+                    "trade_price_attempted": current_price,
+                    "trade_status": trade_executed_info['status'],
+                    "trade_quantity_executed": trade_executed_info['quantity'] if trade_executed_info['status'] == 'SUCCESS' else 0,
+                    "trade_price_executed": trade_executed_info['price'] if trade_executed_info['status'] == 'SUCCESS' else None,
+                    "trade_pnl": paper_trading_engine.transaction_log[-1].get('pnl') if trade_executed_info['status'] == 'SUCCESS' and trade_executed_info['action'] == 'SELL' and paper_trading_engine.transaction_log else None,
+                    "trade_failure_reason": trade_executed_info.get('reason_if_failed'),
+                    "portfolio_cash_after_trade": paper_trading_engine.get_cash(),
+                    "portfolio_holdings_stock_after_trade": paper_trading_engine.get_holdings().get(stock_symbol, {'quantity': 0, 'avg_price': 0})
+                }
+                trade_event_logger.log_event(execution_event_data)
             else:
                 print(f"    Trade quantity is 0. No trade executed for {stock_symbol}.")
         else: # HOLD or error in decision
@@ -217,13 +289,15 @@ def main_trading_logic():
 
         # e. Update Memory
         print(f"\n  --- e. Updating memory for {stock_symbol} ---")
-        memory_manager.add_to_stm(item_type='trade_decision', stock_symbol=stock_symbol,
-                                  content=f"Decision: {parsed_decision.get('decision')}, Reasoning: {parsed_decision.get('reasoning')}, Confidence: {parsed_decision.get('confidence')}")
-        if trade_executed_info:
-            memory_manager.add_to_stm(item_type='trade_execution', stock_symbol=stock_symbol,
-                                      content=f"Action: {trade_executed_info['action']}, Qty: {trade_executed_info['quantity']}, Price: {trade_executed_info['price']:.2f}, Status: {trade_executed_info['status']}" + (f", Reason: {trade_executed_info['reason_if_failed']}" if not trade_executed_info['status'] and trade_executed_info['reason_if_failed'] else ""))
+        # STM logging for trade_decision and trade_execution removed as this is now in trade_event_logger.
+        # memory_manager.add_to_stm(item_type='trade_decision', stock_symbol=stock_symbol,
+        #                           content=f"Decision: {parsed_decision.get('decision')}, Reasoning: {parsed_decision.get('reasoning')}, Confidence: {parsed_decision.get('confidence')}")
+        # if trade_executed_info:
+        #     memory_manager.add_to_stm(item_type='trade_execution', stock_symbol=stock_symbol,
+        #                               content=f"Action: {trade_executed_info['action']}, Qty: {trade_executed_info['quantity']}, Price: {trade_executed_info['price']:.2f}, Status: {trade_executed_info['status']}" + (f", Reason: {trade_executed_info['reason_if_failed']}" if not trade_executed_info['status'] and trade_executed_info['reason_if_failed'] else ""))
 
         # Consider adding significant news or analysis results to LTM periodically or based on rules
+        # This LTM logging remains as it's for curated insights, not a direct event log.
         if parsed_decision.get('confidence') == 'High' and relevant_news_headlines:
              memory_manager.add_to_ltm(category="trade_catalyst_news", summary=f"High confidence {parsed_decision.get('decision')} for {stock_symbol} based on news: {relevant_news_headlines[0]} and analysis: {parsed_decision.get('reasoning')}", stock_symbol=stock_symbol)
 

@@ -1,13 +1,10 @@
 import yfinance as yf
 import pandas as pd
 import os
+from config.nifty50_stocks import NIFTY_50_SYMBOLS
 
 # Nifty 50 stock tickers (subset)
-NIFTY_50_TICKERS = [
-    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
-    "HINDUNILVR.NS", "ITC.NS", "KOTAKBANK.NS", "SBIN.NS", "BHARTIARTL.NS",
-    "BAJFINANCE.NS", "LT.NS", "ASIANPAINT.NS", "AXISBANK.NS", "MARUTI.NS"
-]
+NIFTY_50_TICKERS = NIFTY_50_SYMBOLS
 
 # Data storage path
 DATA_STORAGE_PATH = "data/stock_data/"
