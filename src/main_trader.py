@@ -7,15 +7,17 @@ from datetime import datetime
 from components import stock_data_fetcher
 from components import technical_indicator_calculator
 from components import news_scraper
+from config.nifty50_stocks import NIFTY_50_SYMBOLS
 from components import memory_manager
 from components import rag_retriever
 from components import gemini_client
 from components import paper_trading_engine
 
 # Configuration
-STOCKS_TO_PROCESS = ['RELIANCE.NS', 'TCS.NS'] # Example stocks
+# Load the list of Nifty 50 stocks to be processed from the configuration file.
+STOCKS_TO_PROCESS = NIFTY_50_SYMBOLS
 STOCK_DATA_WITH_INDICATORS_PATH = "data/stock_data_with_indicators/"
-FIXED_TRADE_QUANTITY = 1 # Fixed quantity for trades for now
+# FIXED_TRADE_QUANTITY = 1 # Fixed quantity for trades for now - Replaced by dynamic sizing
 
 def format_for_gemini(data_object, max_items=None):
     """Helper to format various data types for Gemini prompts, with truncation."""
@@ -163,23 +165,53 @@ def main_trading_logic():
         # d. Execute Trade
         print(f"\n  --- d. Executing trade for {stock_symbol} ---")
         trade_executed_info = None
+        # --- Determine Trade Quantity Dynamically ---
+        # The trade_quantity is determined based on Gemini's recommendation:
+        # 1. Specific number of shares (position_size).
+        # 2. Percentage of available cash (position_size_percent).
+        # If neither is provided or valid, quantity defaults to 0.
+        trade_quantity = 0
         if parsed_decision.get('decision') in ["BUY", "SELL"]:
-            # TODO: Implement dynamic quantity logic later (e.g., based on confidence, risk management)
-            # For now, using FIXED_TRADE_QUANTITY
-            trade_success = paper_trading_engine.execute_order(
-                stock_symbol,
-                parsed_decision['decision'],
-                FIXED_TRADE_QUANTITY,
-                current_price
-            )
-            print(f"    Trade Execution Status for {stock_symbol} ({parsed_decision['decision']} {FIXED_TRADE_QUANTITY} @ {current_price:.2f}): {'SUCCESS' if trade_success else 'FAILED'}")
-            trade_executed_info = {
-                'status': 'SUCCESS' if trade_success else 'FAILED',
-                'action': parsed_decision['decision'],
-                'quantity': FIXED_TRADE_QUANTITY,
-                'price': current_price,
-                'reason_if_failed': paper_trading_engine.transaction_log[-1].get('reason') if not trade_success and paper_trading_engine.transaction_log else None
-            }
+            position_size = parsed_decision.get('position_size') # int number of shares
+            position_size_percent = parsed_decision.get('position_size_percent') # float percentage
+            # current_price is already available
+            # portfolio_cash is already available (fetched before Gemini call)
+
+            if position_size is not None and position_size > 0:
+                trade_quantity = position_size
+                print(f"    Using specific share quantity from Gemini: {trade_quantity}")
+            elif position_size_percent is not None and position_size_percent > 0:
+                if current_price > 0: # Avoid division by zero if price is somehow zero
+                    cash_to_allocate = portfolio_cash * (position_size_percent / 100.0)
+                    calculated_quantity = int(cash_to_allocate / current_price)
+                    trade_quantity = calculated_quantity
+                    print(f"    Using percentage of cash from Gemini: {position_size_percent}%")
+                    print(f"    Cash available: {portfolio_cash:.2f}, Current price: {current_price:.2f}")
+                    print(f"    Allocating {cash_to_allocate:.2f} for trade, calculated quantity: {trade_quantity}")
+                else:
+                    print(f"    Warning: Current price is {current_price}. Cannot calculate quantity from percentage. Defaulting quantity to 0.")
+                    trade_quantity = 0
+            else:
+                print(f"    Warning: Position size not specified or invalid in Gemini response. Defaulting quantity to 0.")
+                trade_quantity = 0
+
+            if trade_quantity > 0:
+                trade_success = paper_trading_engine.execute_order(
+                    stock_symbol,
+                    parsed_decision['decision'],
+                    trade_quantity, # Use dynamic quantity
+                    current_price
+                )
+                print(f"    Trade Execution Status for {stock_symbol} ({parsed_decision['decision']} {trade_quantity} @ {current_price:.2f}): {'SUCCESS' if trade_success else 'FAILED'}")
+                trade_executed_info = {
+                    'status': 'SUCCESS' if trade_success else 'FAILED',
+                    'action': parsed_decision['decision'],
+                    'quantity': trade_quantity, # Use dynamic quantity
+                    'price': current_price,
+                    'reason_if_failed': paper_trading_engine.transaction_log[-1].get('reason') if not trade_success and paper_trading_engine.transaction_log else None
+                }
+            else:
+                print(f"    Trade quantity is 0. No trade executed for {stock_symbol}.")
         else: # HOLD or error in decision
             print(f"    No trade action (HOLD or error) for {stock_symbol}.")
 
